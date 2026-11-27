@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zona Hot · v4.8</title>
+<title>Zona Hot · v4.9</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -748,7 +748,7 @@ select.sth-pill{appearance:none;padding-right:14px}
 .tc .tbg img,.sc .tbg img{opacity:.42!important}
 .tc .tbg:after,.sc .tbg:after{background:linear-gradient(180deg,rgba(8,4,4,.15) 0%,rgba(8,4,4,.55) 45%,rgba(8,4,4,.92) 100%)!important}
 @media(max-width:1020px){.tc .tx{font-size:18px}}
-/* v4.8 login real */
+/* v4.9 login real */
 .g-alt{display:block;margin:14px auto 0;color:#cfc4c6;font-size:14px}
 .g-alt b{color:#fff;font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .g-alt:hover b{color:#ff6a5a}
@@ -1243,10 +1243,23 @@ const pk=(a,s,n=0)=>a[(s+n)%a.length];
 const saveConvs=()=>LS.set('zh_convs',state.convs);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
-/* ponto único para ligar a IA real na etapa 4: troque o corpo desta função por um fetch ao seu backend */
-async function aiCall({mod,text,o,seed}){
-  await new Promise(r=>setTimeout(r,650+Math.random()*500));
-  return demoAI(mod,text,o,seed);
+/* v4.9 · IA real do Estúdio (servidor /api/chat); sem servidor, cai na demonstração */
+async function aiCall({mod,text,o,seed,hist}){
+  try{
+    const h=(hist&&hist.length?hist:[{r:'u',t:text}]).slice(-16).map(m=>({role:m.r==='u'?'user':'assistant',content:m.t}));
+    const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),60000);
+    const tk=await zhToken();
+    const r=await fetch((window.ZH_API||'')+'/api/chat',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},tk?{Authorization:'Bearer '+tk}:{}),body:JSON.stringify({model:'livre',tool:{mod,fmt:o.fmt,tom:o.tom,idioma:o.idioma},messages:h}),signal:ctrl.signal});
+    clearTimeout(to);
+    const j=await r.json().catch(()=>({}));
+    if(r.status===401){toast('Sessão expirou. Entre de novo.');return 'Sua sessão expirou. Toque em sair e entre de novo.'}
+    if(r.status===429)return j.error||'Muitas mensagens em pouco tempo. Espere um minuto e tente de novo.';
+    if(r.ok&&j.text)return j.text;
+    throw new Error(j.error||'sem resposta')
+  }catch(e){
+    await new Promise(r=>setTimeout(r,500));
+    return demoAI(mod,text,o,seed)
+  }
 }
 
 function demoAI(mod,text,o,seed){
@@ -1632,7 +1645,7 @@ function estudio(){
   const run=async(text,seed)=>{
     busy=true;$('#send').disabled=true;paint();const t=typing();
     try{
-      const r=await aiCall({mod:c.mod,text,o:c.o,seed});
+      const r=await aiCall({mod:c.mod,text,o:c.o,seed,hist:c.msgs});
       c.msgs.push({r:'a',t:r,id:uid()});
     }catch(e){c.msgs.push({r:'a',t:'Não consegui responder agora. Tente enviar de novo.',id:uid()})}
     c.upd=Date.now();saveConvs();busy=false;$('#send').disabled=false;t.remove();paint();drawList();ci.focus();
