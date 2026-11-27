@@ -1,7 +1,7 @@
 // Zona Hot · servidor de vídeo (Vercel) · provedor: Kafox (paga em reais).
 // A chave do Kafox fica só aqui (variável de ambiente), nunca no HTML.
 // Variável obrigatória (painel da Vercel): KAFOX_API_KEY
-// Opcional: KAFOX_MODEL (padrão wan-2.2, sem censura e o mais barato; troque por wan-3 se quiser)
+// Opcional: KAFOX_MODEL (padrão wan-3, sem censura; wan-2.2 exige imagem inicial)
 // Login: confere o token do Supabase, igual ao chat.js.
 //
 // Uso (POST, com Authorization: Bearer <token do usuário>):
@@ -13,7 +13,7 @@
 const SB_URL = process.env.SUPABASE_URL || 'https://hpttttewjywpiembcwwu.supabase.co';
 const SB_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_yrjJkdljB3IOa4YSmwBAeA_ElgeJ0Um';
 const API = 'https://api.kafox.dev/v1';
-const MODEL = process.env.KAFOX_MODEL || 'wan-2.2';
+const MODEL = process.env.KAFOX_MODEL || 'wan-3';
 
 const RESOLUTIONS = ['480p', '720p'];
 const MAX_DURATION = 5;        // trava de custo: nunca passa de 5 s
@@ -96,7 +96,7 @@ module.exports = async (req, res) => {
       const imageUrl = String(body.imageUrl || '').trim();
       let content = prompt;
       if (imageUrl) {
-        if (!/^https:\/\//i.test(imageUrl)) return res.status(400).json({ error: 'A imagem precisa ser um link https' });
+        if (!/^(https:\/\/|data:image\/)/i.test(imageUrl)) return res.status(400).json({ error: 'A imagem precisa ser um link https' });
         content = [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }];
       }
       const r = await kafox('/chat/completions', {
@@ -108,6 +108,7 @@ module.exports = async (req, res) => {
           resolution,
           aspect_ratio: '9:16',
           generate_audio: false,
+          ...(imageUrl ? { image: imageUrl } : {}),
         }),
       });
       const debug = body.debug ? { debug: String(r.text || '').slice(0, 1500), httpStatus: r.status } : {};
