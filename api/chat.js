@@ -33,6 +33,16 @@ const AGENTS = {
   voz: 'Agente Prompt do Voice: entregue prompts de voz prontos com timbre, tom e ritmo para a persona falar do jeito certo.',
 };
 
+
+const TOOLS = {
+  roteirista: 'Ferramenta Roteirista Hot: escreva roteiros, lives, posts, páginas de venda, legendas e bios prontos para usar, no formato pedido.',
+  persona: 'Ferramenta Persona Hot: crie fichas de personagens adultos fictícios (nome, idade acima de 18, história, personalidade, jeito de falar, estilo visual, bio de perfil).',
+  boss: 'Ferramenta Prompts Studio: entregue prompts de imagem e vídeo completos e detalhados (sujeito, pose, cenário, luz, câmera, estilo), prontos para colar numa IA de criação.',
+  voicehot: 'Ferramenta Voice Hot: escreva textos de narração com marcações de pausa e uma direção de voz (timbre, tom, ritmo) para a persona falar.',
+  prompthot: 'Ferramenta Prompt Hot: entregue prompts estruturados (papel, contexto, tarefa, formato) prontos para copiar e colar.',
+};
+const cl = (v, n) => String(v || '').replace(/[\r\n]+/g, ' ').slice(0, n);
+
 const hits = new Map(); // limite simples por usuário (reinicia quando o servidor reinicia)
 function limited(key) {
   const now = Date.now(), win = 60_000, max = 20;
@@ -73,7 +83,7 @@ module.exports = async (req, res) => {
 
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
-  const { model = 'livre', agent = null, messages = [] } = body || {};
+  const { model = 'livre', agent = null, messages = [], tool = null } = body || {};
 
   const msgs = (Array.isArray(messages) ? messages : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
@@ -81,7 +91,10 @@ module.exports = async (req, res) => {
     .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
   if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return res.status(400).json({ error: 'Mensagem vazia' });
 
-  const system = BASE + (AGENTS[agent] ? '\n\n' + AGENTS[agent] : '');
+  let system = BASE + (AGENTS[agent] ? '\n\n' + AGENTS[agent] : '');
+  if (tool && TOOLS[tool.mod]) {
+    system += '\n\n' + TOOLS[tool.mod] + '\nFormato pedido: ' + cl(tool.fmt, 40) + '. Tom: ' + cl(tool.tom, 30) + '. Idioma da resposta: ' + cl(tool.idioma, 40) + '.';
+  }
 
   try {
     const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
