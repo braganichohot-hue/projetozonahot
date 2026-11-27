@@ -1,20 +1,22 @@
-// Zona Hot · servidor de vídeo (Vercel). A chave do makefun.ai fica só aqui, nunca no HTML.
-// Variável de ambiente (painel da Vercel): MAKEFUN_API_KEY  (obrigatória)
-// Opcional: MAKEFUN_MODEL (padrão wan3.0-video; use wan3.0-video-prime para sair mais rápido, porém mais caro)
+// Zona Hot · servidor de vídeo (Vercel) · provedor: Kafox (paga em reais).
+// A chave do Kafox fica só aqui (variável de ambiente), nunca no HTML.
+// Variável obrigatória (painel da Vercel): KAFOX_API_KEY
+// Opcional: KAFOX_MODEL (padrão wan-2.2, sem censura e o mais barato; troque por wan-3 se quiser)
 // Login: confere o token do Supabase, igual ao chat.js.
 //
 // Uso (POST, com Authorization: Bearer <token do usuário>):
-//   { "action": "create", "prompt": "...", "imageUrl": "https://...", "duration": 5, "resolution": "480P" }
-//   -> { "id": "..." }
-//   { "action": "status", "id": "..." }
-//   -> { "status": "...", "done": true/false, "videoUrl": "..." }
+//   { "action": "create", "prompt": "...", "imageUrl": "https://...", "duration": 5, "resolution": "480p" }
+//   -> { "done": true, "videoUrl": "https://..." }
+//   ou { "done": false, "id": "..." } se o Kafox devolver uma tarefa em andamento
+//   Para o primeiro teste, mande "debug": true e a resposta traz um trecho do que o Kafox respondeu.
 
 const SB_URL = process.env.SUPABASE_URL || 'https://hpttttewjywpiembcwwu.supabase.co';
 const SB_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_yrjJkdljB3IOa4YSmwBAeA_ElgeJ0Um';
-const API = 'https://makefun.ai/api/v1/userWan30';
-const MODEL = process.env.MAKEFUN_MODEL || 'wan3.0-video';
+const API = 'https://api.kafox.dev/v1';
+const MODEL = process.env.KAFOX_MODEL || 'wan-2.2';
 
-const RESOLUTIONS = ['480P', '720P', '1080P'];
+const RESOLUTIONS = ['480p', '720p'];
+const MAX_DURATION = 5;        // trava de custo: nunca passa de 5 s
 const MAX_CREATE_PER_HOUR = 5; // trava de custo por usuário
 
 const hits = new Map();
@@ -43,81 +45,82 @@ async function checkUser(token) {
   } catch { return null; }
 }
 
-async function mk(path, opts) {
-  const r = await fetch(API + path, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + process.env.MAKEFUN_API_KEY,
-    },
-  });
-  const j = await r.json().catch(() => null);
-  return { ok: r.ok, status: r.status, json: j };
+// Procura um link de vídeo em qualquer lugar da resposta do Kafox.
+function findVideoUrl(x) {
+  if (!x) return null;
+  const s = typeof x === 'string' ? x : JSON.stringify(x);
+  const m = s.match(/https?:\/\/[^\s"'\\)\]]+?\.(?:mp4|webm|mov)(?:\?[^\s"'\\)\]]*)?/i);
+  if (m) return m[0];
+  const any = s.match(/https?:\/\/[^\s"'\\)\]]+/i);
+  return any ? any[0] : null;
+}
+
+async function kafox(path, opts) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 55_000);
+  try {
+    const r = await fetch(API + path, {
+      ...opts,
+      signal: ctrl.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + process.env.KAFOX_API_KEY,
+      },
+    });
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    return { ok: r.ok, status: r.status, json, text };
+  } finally { clearTimeout(t); }
 }
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
-  if (!process.env.MAKEFUN_API_KEY) return res.status(500).json({ error: 'Chave de vídeo não configurada no servidor' });
-
+  if (!process.env.KAFOX_API_KEY) return res.status(500).json({ error: 'Chave de vídeo não configurada no servidor' });
   const auth = String(req.headers.authorization || '');
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   if (!token) return res.status(401).json({ error: 'Entre na sua conta para gerar vídeo' });
   const uid = await checkUser(token);
   if (!uid) return res.status(401).json({ error: 'Sessão expirou. Entre de novo.' });
-
   const body = typeof req.body === 'string' ? (() => { try { return JSON.parse(req.body); } catch { return {}; } })() : (req.body || {});
   const action = String(body.action || '');
-
   try {
     if (action === 'create') {
-      if (limited('c:' + uid, MAX_CREATE_PER_HOUR, 3_600_000)) {
-        return res.status(429).json({ error: 'Limite de vídeos por hora atingido. Tente mais tarde.' });
-      }
+      if (limited('c:' + uid, MAX_CREATE_PER_HOUR, 3_600_000)) return res.status(429).json({ error: 'Limite de vídeos por hora atingido. Tente mais tarde.' });
       const prompt = String(body.prompt || '').trim().slice(0, 2000);
       if (prompt.length < 3) return res.status(400).json({ error: 'Escreva o que você quer no vídeo' });
-
       let duration = parseInt(body.duration, 10);
       if (!(duration >= 2)) duration = 5;
-      if (duration > 10) duration = 10; // trava de custo
-      const resolution = RESOLUTIONS.includes(String(body.resolution)) ? String(body.resolution) : '480P';
-
-      const input = { prompt };
+      if (duration > MAX_DURATION) duration = MAX_DURATION;
+      const resolution = RESOLUTIONS.includes(String(body.resolution)) ? String(body.resolution) : '480p';
       const imageUrl = String(body.imageUrl || '').trim();
+      let content = prompt;
       if (imageUrl) {
         if (!/^https:\/\//i.test(imageUrl)) return res.status(400).json({ error: 'A imagem precisa ser um link https' });
-        input.media = [{ type: 'reference_image', url: imageUrl }];
+        content = [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }];
       }
-
-      const r = await mk('/start', {
+      const r = await kafox('/chat/completions', {
         method: 'POST',
         body: JSON.stringify({
           model: MODEL,
-          mode: 'reference',
-          input,
-          parameters: { resolution, ratio: 'adaptive', duration, audio: false },
+          messages: [{ role: 'user', content }],
+          duration,
+          resolution,
+          aspect_ratio: '9:16',
+          generate_audio: false,
         }),
       });
-      const d = r.json && r.json.data;
-      if (!r.ok || !d || !d._id) {
-        return res.status(502).json({ error: 'O gerador de vídeo recusou o pedido', detalhe: r.json && (r.json.message || r.json.msg || r.json.error) || null });
-      }
-      return res.status(200).json({ id: d._id });
+      const debug = body.debug ? { debug: String(r.text || '').slice(0, 1500), httpStatus: r.status } : {};
+      if (!r.ok) return res.status(502).json({ error: 'O gerador de vídeo recusou o pedido', ...debug });
+      const videoUrl = findVideoUrl(r.json || r.text);
+      if (videoUrl) return res.status(200).json({ done: true, videoUrl, ...debug });
+      const id = r.json && (r.json.id || (r.json.data && r.json.data.id));
+      if (id) return res.status(200).json({ done: false, id: String(id), ...debug });
+      return res.status(502).json({ error: 'O gerador não devolveu um vídeo. Rode de novo com debug.', ...debug });
     }
-
-    if (action === 'status') {
-      const id = String(body.id || '');
-      if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return res.status(400).json({ error: 'id inválido' });
-      if (limited('s:' + uid, 120, 60_000)) return res.status(429).json({ error: 'Muitas consultas. Aguarde um pouco.' });
-      const r = await mk('/' + id, { method: 'GET' });
-      const d = r.json && r.json.data;
-      if (!r.ok || !d) return res.status(502).json({ error: 'Não consegui consultar o vídeo' });
-      const status = String(d.current_status || '');
-      const done = status === 'completed';
-      return res.status(200).json({ status, done, videoUrl: done ? (d.result_url || null) : null });
-    }
-
     return res.status(400).json({ error: 'Ação inválida' });
   } catch (e) {
-    return res.status(500).json({ error: 'Erro no servidor de vídeo' });
+    const msg = e && e.name === 'AbortError' ? 'O vídeo demorou demais. Tente de novo.' : 'Erro no servidor de vídeo';
+    return res.status(500).json({ error: msg });
   }
 };
