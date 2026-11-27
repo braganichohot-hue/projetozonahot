@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zona Hot · v5.1</title>
+<title>Zona Hot · v5.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1344,7 +1344,7 @@ function sthDraw(it,w=360){
 }
 const sthModel=id=>STH_MODELS.find(m=>m.id===id)||STH_MODELS[0];
 const sthDur=it=>it.kind==='video'?6500:3500;
-function sthSettle(){let ch=false;sth.items.forEach(it=>{if(it.status==='gen'&&it.real){if(Date.now()-it.ts>=120000){it.status='err';ch=true}}else if(it.status==='gen'&&Date.now()-it.ts>=sthDur(it)){it.status='ready';ch=true}});if(ch)sthSave()}
+function sthSettle(){let ch=false;sth.items.forEach(it=>{if(it.status==='gen'&&it.real){if(Date.now()-it.ts>=330000){it.status='err';ch=true}}else if(it.status==='gen'&&Date.now()-it.ts>=sthDur(it)){it.status='ready';ch=true}});if(ch)sthSave()}
 
 function studiohot(){
   sthSettle();
@@ -1446,11 +1446,12 @@ function studiohot(){
       if(!tk){fail('Entre na sua conta para gerar vídeo');return}
       const imgSmall=await shrink(st.init);
       if(!imgSmall){fail('Não consegui ler a imagem');return}
-      const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),90000);
+      const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),295000);
       const r=await fetch((window.ZH_API||'')+'/api/video',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tk},body:JSON.stringify({action:'create',prompt:v,duration:DUR,resolution:'480p',debug:true,imageUrl:imgSmall}),signal:ctrl.signal});
       clearTimeout(to);
       const j=await r.json().catch(()=>({}));
       if(r.ok&&j.videoUrl){it.videoUrl=j.videoUrl;it.status='ready';sthSave();if($('#sthGrid'))drawGrid();toast('Vídeo pronto');return}
+      if(r.ok&&j.done===false){fail('Vídeo em fila (id '+j.id+')','Em fila\n'+(j.debug||''));return}
       fail(j.error||('Erro '+r.status),'HTTP '+r.status+'\n'+(j.error||'')+'\n'+(j.httpStatus?('Kafox: '+j.httpStatus+'\n'):'')+(j.debug||JSON.stringify(j)).slice(0,1500));
     }catch(e){fail('O vídeo demorou demais ou a rede caiu','Erro: '+(e&&e.message||e))}
   };
