@@ -57,7 +57,7 @@ function findVideoUrl(x) {
 
 async function kafox(path, opts) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 55_000);
+  const t = setTimeout(() => ctrl.abort(), 285_000);
   try {
     const r = await fetch(API + path, {
       ...opts,
@@ -111,7 +111,7 @@ module.exports = async (req, res) => {
       let r = null; const log = [];
       for (let i = 0; i < attempts.length; i++) {
         r = await kafox('/chat/completions', { method: 'POST', body: JSON.stringify(attempts[i]) });
-        log.push('t' + (i + 1) + ':' + r.status + (r.ok ? ' OK' : ' ' + String(r.text || '').slice(0, 45).replace(/\s+/g, ' ')));
+        log.push('t' + (i + 1) + ':' + r.status + (r.ok ? ' OK ' + Math.round(String(r.text||'').length/1000) + 'kb' : ' ' + String(r.text || '').slice(0, 45).replace(/\s+/g, ' ')));
         if (r.ok) break;
       }
       let info = '';
@@ -123,7 +123,7 @@ module.exports = async (req, res) => {
           info = '\nMODELO: ' + JSON.stringify(hit || String(m.text || '').slice(0, 600)).slice(0, 900);
         } catch (e) { info = '\nmodelos: erro'; }
       }
-      const debug = body.debug ? { debug: ('v4 ' + MODEL + ' img=' + (imageUrl ? imageUrl.length : 0) + '\n' + log.join('\n') + info).slice(0, 1450), httpStatus: r.status } : {};
+      const debug = body.debug ? { debug: ('v5 ' + MODEL + ' img=' + (imageUrl ? imageUrl.length : 0) + '\n' + log.join('\n') + info).slice(0, 1450), httpStatus: r.status } : {};
       if (!r.ok) return res.status(502).json({ error: 'O gerador de vídeo recusou o pedido', ...debug });
       const videoUrl = findVideoUrl(r.json || r.text);
       if (videoUrl) return res.status(200).json({ done: true, videoUrl, ...debug });
