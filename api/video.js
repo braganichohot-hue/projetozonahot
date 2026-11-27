@@ -13,11 +13,11 @@
 const SB_URL = process.env.SUPABASE_URL || 'https://hpttttewjywpiembcwwu.supabase.co';
 const SB_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_yrjJkdljB3IOa4YSmwBAeA_ElgeJ0Um';
 const API = 'https://api.kafox.dev/v1';
-const MODEL = process.env.KAFOX_MODEL || 'wan-3';
+const MODEL = process.env.KAFOX_MODEL || 'alibaba/wan-3.0';
 
 const RESOLUTIONS = ['480p', '720p'];
 const MAX_DURATION = 5;        // trava de custo: nunca passa de 5 s
-const MAX_CREATE_PER_HOUR = 5; // trava de custo por usuário
+const MAX_CREATE_PER_HOUR = 3; // trava de custo por usuário
 
 const hits = new Map();
 function limited(key, max, win) {
@@ -123,7 +123,7 @@ module.exports = async (req, res) => {
           info = '\nMODELO: ' + JSON.stringify(hit || String(m.text || '').slice(0, 600)).slice(0, 900);
         } catch (e) { info = '\nmodelos: erro'; }
       }
-      const debug = body.debug ? { debug: ('v5 ' + MODEL + ' img=' + (imageUrl ? imageUrl.length : 0) + '\n' + log.join('\n') + info).slice(0, 1450), httpStatus: r.status } : {};
+      const debug = body.debug ? { debug: ('v6 ' + MODEL + ' img=' + (imageUrl ? imageUrl.length : 0) + '\n' + log.join('\n') + info).slice(0, 1450), httpStatus: r.status } : {};
       if (!r.ok) return res.status(502).json({ error: 'O gerador de vídeo recusou o pedido', ...debug });
       const videoUrl = findVideoUrl(r.json || r.text);
       if (videoUrl) return res.status(200).json({ done: true, videoUrl, ...debug });
