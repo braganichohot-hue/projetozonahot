@@ -100,19 +100,30 @@ module.exports = async (req, res) => {
         content = [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }];
       }
       const base = { model: MODEL, duration, resolution, aspect_ratio: '9:16', generate_audio: false };
+      const TEST = 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png';
       const attempts = imageUrl ? [
         { ...base, messages: [{ role: 'user', content }], image: imageUrl },
-        { ...base, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: imageUrl }] }], image: imageUrl },
-        { ...base, messages: [{ role: 'user', content }], image_url: imageUrl },
-        { ...base, messages: [{ role: 'user', content }], images: [imageUrl] },
+        { ...base, messages: [{ role: 'user', content }], extra_body: { image: imageUrl } },
+        { ...base, messages: [{ role: 'user', content }], input: { image: imageUrl } },
+        { ...base, messages: [{ role: 'user', content }], parameters: { image: imageUrl } },
+        { ...base, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: TEST } }] }], image: TEST },
       ] : [{ ...base, messages: [{ role: 'user', content }] }];
       let r = null; const log = [];
       for (let i = 0; i < attempts.length; i++) {
         r = await kafox('/chat/completions', { method: 'POST', body: JSON.stringify(attempts[i]) });
-        log.push('t' + (i + 1) + ':' + r.status + ' ' + String(r.text || '').slice(0, 160).replace(/\s+/g, ' '));
+        log.push('t' + (i + 1) + ':' + r.status + (r.ok ? ' OK' : ' ' + String(r.text || '').slice(0, 45).replace(/\s+/g, ' ')));
         if (r.ok) break;
       }
-      const debug = body.debug ? { debug: 'v3 modelo=' + MODEL + ' img=' + (imageUrl ? imageUrl.length : 0) + '\n' + log.join('\n') + '\n' + String(r.text || '').slice(0, 900), httpStatus: r.status } : {};
+      let info = '';
+      if (!r.ok && body.debug) {
+        try {
+          const m = await kafox('/models', { method: 'GET' });
+          const list = (m.json && (m.json.data || m.json.models || m.json)) || [];
+          const hit = Array.isArray(list) ? list.find(x => x && String(x.id || x.name || '').toLowerCase().endsWith(MODEL)) : null;
+          info = '\nMODELO: ' + JSON.stringify(hit || String(m.text || '').slice(0, 600)).slice(0, 900);
+        } catch (e) { info = '\nmodelos: erro'; }
+      }
+      const debug = body.debug ? { debug: ('v4 ' + MODEL + ' img=' + (imageUrl ? imageUrl.length : 0) + '\n' + log.join('\n') + info).slice(0, 1450), httpStatus: r.status } : {};
       if (!r.ok) return res.status(502).json({ error: 'O gerador de vídeo recusou o pedido', ...debug });
       const videoUrl = findVideoUrl(r.json || r.text);
       if (videoUrl) return res.status(200).json({ done: true, videoUrl, ...debug });
