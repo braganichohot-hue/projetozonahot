@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zona Hot · v5.0</title>
+<title>Zona Hot · v5.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1432,8 +1432,10 @@ function studiohot(){
       if(p>=1){it.status='ready';sthSave();if(el)el.replaceWith(card(it))}else{any=true;if(el){const b=el.querySelector('.sth-pb i');if(b)b.style.width=(p*100)+'%'}}});
     if(any)setTimeout(tick,200)};
   /* v5.0 · vídeo real (servidor /api/video, Kafox) */
+  const shrink=src=>new Promise(ok=>{const im=new Image();im.onload=()=>{const M=768,k=Math.min(1,M/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.82))};im.onerror=()=>ok(null);im.src=src});
   const realVideo=async(v,m)=>{
     const DUR=5;
+    if(!st.init){toast('Anexe uma imagem inicial (caixa "Imagem inicial") para gerar o vídeo');return}
     if(sth.used+DUR>STH_LIMIT){toast('Você atingiu o limite de vídeo deste mês');return}
     const it={id:uid(),kind:'video',model:st.model,prompt:v,ratio:'9:16',ts:Date.now(),seed:hsh(v)+sth.items.length,status:'gen',real:true,dur:DUR};
     sth.items.unshift(it);sth.used+=DUR;sthSave();P.value='';grow();drawGrid();$('#view').scrollTo({top:0,behavior:'smooth'});
@@ -1442,8 +1444,10 @@ function studiohot(){
     try{
       const tk=await zhToken();
       if(!tk){fail('Entre na sua conta para gerar vídeo');return}
+      const imgSmall=await shrink(st.init);
+      if(!imgSmall){fail('Não consegui ler a imagem');return}
       const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),90000);
-      const r=await fetch((window.ZH_API||'')+'/api/video',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tk},body:JSON.stringify({action:'create',prompt:v,duration:DUR,resolution:'480p',debug:true}),signal:ctrl.signal});
+      const r=await fetch((window.ZH_API||'')+'/api/video',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tk},body:JSON.stringify({action:'create',prompt:v,duration:DUR,resolution:'480p',debug:true,imageUrl:imgSmall}),signal:ctrl.signal});
       clearTimeout(to);
       const j=await r.json().catch(()=>({}));
       if(r.ok&&j.videoUrl){it.videoUrl=j.videoUrl;it.status='ready';sthSave();if($('#sthGrid'))drawGrid();toast('Vídeo pronto');return}
